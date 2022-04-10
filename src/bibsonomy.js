@@ -10,71 +10,88 @@ function BibSonomy(user, apiKey, baseUrl = "https://www.bibsonomy.org/api") {
 	this.apiKey = apiKey;
 	this.baseUrl = baseUrl;
 	
-	/**
-	 * Helper function to shorten the HTTP request code.
-	 */
-	var request = function(type, url, data, onload, onerror, userContext = false) {
-
-		// build url
-		if (userContext) {
-			url = '/users/' + user + url
-		}
-		url = baseUrl + url
-
-		console.log(url)
-
-		var xhr = new XMLHttpRequest();
-		xhr.open(type, url, true);
-		xhr.setRequestHeader('Authorization', 'Basic ' + btoa(user + ':' + apiKey));
-		
-		xhr.onload = onload
-		
-		if (onerror !== undefined) {
-			xhr.onerror = onerror
-		}
-		
-		xhr.send(data);
-	}
-	
-	var requestWithDefaultErrorHandling = function(type, url, data, callback, onload, user = false) {
-		
+	this.isLoginValid = function(callback) {
+		var url = this.baseUrl + '/posts?resourcetype=bibtex&search=test&format=json';
 		request(
-			type, 
+			'GET',
 			url, 
-			data,
-			function(e) {
-			
-				// check if status corresponds to a "successful operation" / is a 2xx code
-				var code = this.status - 200
-				if (code >= 0 && code < 100) {
-					onload.call(this, e)
-				} else {
-					callback(e, BibSonomy.ERROR_STATUS(this.status, this.response))
-				}
-			}, 
-			function(e) {
-				callback(e, BibSonomy.ERROR_NETWORK());
-			},
-			user);
+			null, 
+			(e) => {callback(e, null, true)}, 
+			(e) => {callback(e, null, false)}
+		);
 	}
-	
+
 	/**
 	 */
 	this.getUserPost = function(user, intraHash, callback) {
-		
+
 		var url = '/users/' + user + '/posts/' + intraHash + '?format=json';
 		
 		requestWithDefaultErrorHandling('GET', url, undefined, callback, function(e) {
 			var json = JSON.parse(this.response);
 			callback(e, null, json['post']);
-		}, false);
+		});
+	}
+
+	/**
+	 * https://bitbucket.org/bibsonomy/bibsonomy/wiki/documentation/api/methods/ListOfAllPosts
+	 * `resourceHash` seems to have to be the interHash
+	 */
+	this.getPosts = function(
+			callback,
+			resourceType="publication", 
+			resourceHash=null, 
+			tags=null,
+			search=null,
+			user=null, 
+			group=null, 
+			viewable=null, 
+			sortKey=null,
+			sortOrder=null) {
+
+		var url = '/posts?format=json';
+		url += "&resourcetype=" + resourceType; 
+		if (resourceHash !== null) url += "&resource=" + resourceHash;
+		if (tags !== null) url += "&tags=" + tags.join("+");
+		if (search !== null) url += "&search=" + search; 
+		if (user !== null) url += "&user=" + user; 
+		if (group !== null) url += "&group=" + group; 
+		if (viewable !== null) url += "&viewable=" + viewable; 
+		if (sortKey !== null) url+= "&sortkey=" + sortKey;
+		if (sortOrder !== null) url+= "&sortorder=" + sortOrder;
+
+		requestWithDefaultErrorHandling('GET', url, undefined, callback, function(e) {
+			var json = JSON.parse(this.response);
+			callback(e, null, json['post']);
+		});
+	}
+  
+
+	/**
+	 * Search resource (which could be 'bibtex' or a 'bookmark').
+	 * Search can be done by tags (`search=False`) or an actual search `search=True`.
+	 */
+	this.searchResources = function(resourceType, query, search) {
+
+		var url = "/posts?user=" + user + "&resourcetype=" + resourceType + "&format=json"
+		if (!search) {
+			url += "&tags=" + query.join("+");
+		} else {
+			url += "&search=" + query;
+		}
+
+		return requestWithDefaultErrorHandling('GET', url, data=null, userContext=false, parseDataOnOk=true);
 	}
 
 	/**
 	 * Post an actual bibtex entry.
 	 */
-	this.postBibtex = function(user, bibtex, tags, callback) {
+	this.postBibtex = function(bibtex, tags, callback, user = null) {
 		
+		if (user === null) {
+			user = this.user
+		}
+
 		var content = {
 			"post": {
 				"bibtex": {
@@ -107,7 +124,11 @@ function BibSonomy(user, apiKey, baseUrl = "https://www.bibsonomy.org/api") {
 	}
 
 	// update post
-	this.updatePost = function(post, callback, sync = false) {
+	this.updatePost = function(post, callback, user = null) {
+
+		if (user === null) {
+			user = this.user
+		}
 
 		var obj = {post: post}
 
@@ -120,7 +141,7 @@ function BibSonomy(user, apiKey, baseUrl = "https://www.bibsonomy.org/api") {
 			console.log("ERROR: no hash available in post")
 		}
 
-		var url =  "/posts/" + hash + "?format=json"
+		var url =  "/users/" + user + "/posts/" + hash + "?format=json"
 		requestWithDefaultErrorHandling('PUT', url, JSON.stringify(obj), callback, function(e) {
 			var newHash = JSON.parse(this.response)["resourcehash"]
 			if (post.bibtex) {
@@ -129,7 +150,7 @@ function BibSonomy(user, apiKey, baseUrl = "https://www.bibsonomy.org/api") {
 				post.bookmark.intrahash = newHash
 			}
 			callback(e, null, post)
-		}, true)
+		})
 	}
 	
 	/**
@@ -170,6 +191,68 @@ function BibSonomy(user, apiKey, baseUrl = "https://www.bibsonomy.org/api") {
 			var json = JSON.parse(this.response);
 			callback(e, null, json);
 		});
+	}
+
+	/**
+	 * Helper function to shorten the HTTP request code.
+	 */
+	 var request = function(type, url, data, onload, onerror) {
+
+		console.log(url)
+
+		var xhr = new XMLHttpRequest();
+		xhr.open(type, url, true);
+		xhr.setRequestHeader('Authorization', 'XXXBasic ' + btoa(user + ':' + apiKey));
+		xhr.setRequestHeader("X-Requested-With", "XMLHttpRequest")
+		xhr.setRequestHeader("Access-Control-Allow-Origin", "*");
+		xhr.setRequestHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS,DELETE,PUT");
+		
+		xhr.onload = onload
+		
+		if (onerror !== undefined) {
+			xhr.onerror = onerror
+		}
+		
+		xhr.send(data);
+	}
+	
+	var requestWithDefaultErrorHandling = function(type, url, data, callback, onload) {
+
+		// make onload parse JSON automatically
+
+		if (onload === "parseJson") {
+			onload = []
+		}
+
+		if (Array.isArray(onload)) {
+			onload = function(e) {
+				var json = JSON.parse(this.response);
+				for (const key of onload) {
+					json = json[key]
+				}
+				callback(e, null, json);
+			}
+		}
+
+		// request resource 
+
+		request(
+			type,
+			url,
+			data,
+			function(e) {
+			
+				// check if status corresponds to a "successful operation" / is a 2xx code
+				var code = this.status - 200
+				if (code >= 0 && code < 100) {
+					onload.call(this, e)
+				} else {
+					callback(e, BibSonomy.ERROR_STATUS(this.status, this.response))
+				}
+			}, 
+			function(e) {
+				callback(e, BibSonomy.ERROR_NETWORK());
+			});
 	}
 	
 }

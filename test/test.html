@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<!-- TODO: this really should be unit tests but I spent way to much time figuring out how to set that up -->
+<!-- google-chrome --disable-web-security --user-data-dir=.chrome-tmp -->
+<!--  -->
+<html>
+    <head>
+        <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+        <style>
+            .success {
+                background-color: #AFE1AF;
+            }
+            .error {
+                background-color: #ffc6c4;
+            }
+        </style>
+        <title>Test</title>
+    </head>
+    <body>
+        <div id="test-reports">
+        </div>
+
+        <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+        <script src="../src/bibsonomy.js"></script>
+        <script>
+
+            function addTestReport(msg, success) {
+                var report = $("<div>")
+                report.html(msg + ": " + (success ? "success" : "failed"))
+                if (success) {
+                    report.addClass("success")
+                } else {
+                    report.addClass("error")
+                }
+                $("#test-reports").append(report)
+            }
+
+            var user = "becker"
+            var apikey = "b6d046e88d2a832ad18892a45e0b411f"
+
+            var bib = new BibSonomy(user, apikey + "xxx")
+            bib.isLoginValid((e, error, validLogin) => {
+                addTestReport("Login test (valid)", !validLogin)
+            })
+
+        </script>
+    </body>
+</html>
